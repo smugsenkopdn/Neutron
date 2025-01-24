@@ -159,7 +159,7 @@ class Window:
                 content = str(open(file, "r", encoding=encoding).read())
         elif html:
             content = str(html) # Make sure it is a string (could be beutifulsoup element)
-
+        
         soup = BeautifulSoup(content, "html.parser")
 
         bridge_html = """
@@ -207,7 +207,7 @@ class Window:
                 });
         };
         """
-
+        
 
         # add registered python function
         if pyfunctions:
@@ -216,12 +216,18 @@ class Window:
                 bridge_html += "function " + function.__name__ +  "(...params){bridge('" + str(function) + "',...params)}; "
 
         bridge_html += "</script>"
-
-        # add stylesheet if needed
+        
+        # add the css 
+    
         if self.css:
-            bridge_html += f'<link rel="stylesheet" href="http://localhost:{self.listener_port}/{self.css}">'
-
-
+            # Check if program is being run as an exe
+            if getattr(sys, 'frozen', False):
+                css = str(open(os.path.join(sys._MEIPASS, self.css), "r", encoding=encoding).read())
+            else:
+                css = str(open(self.css, "r", encoding=encoding).read())
+               
+            bridge_html += f"<style>{css}</style>"
+                
         # Append the new HTML to the <head> section
 
         if not soup.head:
