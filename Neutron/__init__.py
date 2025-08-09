@@ -17,6 +17,8 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 global api_functions
 api_functions = {}
+global document_scripts
+document_scripts = []
 
 class ListenerHTTPServer(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -109,6 +111,12 @@ class WebSocketSendServer(QThread):
         asyncio.run(self.start_server())
 
 def event(function):
+    """
+    Use this function when passing a Python function to an event listener or JavaScript method that requires a callable as parameter.\n
+    Creates a "bridge" for the JS so that it can call a Python function.\n
+    Essentially the manual version of what `Window.display(pyfunctions)` does for you.\n
+    Returns the new JS "bridge" function as a str.
+    """
     if callable(function):
         if not str(function) in api_functions:
             api_functions.update({str(function): function})
@@ -122,6 +130,7 @@ class Window:
         self.css = css
         self.position = position
         self.size = size
+        self.displayed = False
         self.running = False
 
         self.listener_port = listener_port
@@ -133,7 +142,8 @@ class Window:
         self.loop = asyncio.new_event_loop()
 
 
-    def run_javascript(self, javascript):
+    def run_javascript(self, javascript:str) -> str:
+        """Evaluates JavaScript on the application."""
         if not self.running:
              raise RuntimeError(""""Window.run_javascript()" can only be called while the window is running!""")
 
@@ -149,8 +159,13 @@ class Window:
         asyncio.run(send_and_wait())
         return response
 
-    def display(self, file=None, html=None, pyfunctions=None, encoding="utf-8"):
-
+    def display(self, file=None, html=None, pyfunctions=None, jsfunctions=None, encoding:str="utf-8"):
+        """
+        Parses your HTML code. Run before showing the Window.\n
+        `pyfunctions` are functions you want to be able to directly call from your HTML file.\n
+        `jsfunctions` are pieces of JavaScript code you want to include in the application.\n
+        `encoding` is the encoding of your HTML file.
+        """
         if file:
             # Check if program is being run as an exe
             if getattr(sys, 'frozen', False):
@@ -158,7 +173,7 @@ class Window:
             else:
                 content = str(open(file, "r", encoding=encoding).read())
         elif html:
-            content = str(html) # Make sure it is a string (could be beutifulsoup element)
+            content = str(html) # Make sure html is a string (could be beautifulsoup element)
         
         soup = BeautifulSoup(content, "html.parser")
 
@@ -209,23 +224,31 @@ class Window:
         """
         
 
-        # add registered python function
+        # Add registered Python functions
         if pyfunctions:
             for function in pyfunctions:
                 api_functions.update({str(function): function})
                 bridge_html += "function " + function.__name__ +  "(...params){bridge('" + str(function) + "',...params)}; "
 
+        # Add JS functions
+        if jsfunctions:
+            for function in jsfunctions:
+                bridge_html += function
+
+        # Add document scripts
+        if document_scripts:
+            for script in document_scripts:
+                bridge_html += script
+
         bridge_html += "</script>"
         
-        # add the css 
-    
+        # Add the CSS
         if self.css:
             # Check if program is being run as an exe
             if getattr(sys, 'frozen', False):
                 css = str(open(os.path.join(sys._MEIPASS, self.css), "r", encoding=encoding).read())
             else:
                 css = str(open(self.css, "r", encoding=encoding).read())
-               
             bridge_html += f"<style>{css}</style>"
                 
         # Append the new HTML to the <head> section
@@ -247,8 +270,15 @@ class Window:
 
         self.html = str(soup)
 
+        self.displayed = True
 
-    def show(self, after=None):
+    def show(self, exec=True):
+        """
+        Begins execution of the app.\n
+        Set `exec` to `False` if you want to initialize everything without execution so you can change Qt settings first.\n
+        After running `Window.show()`, `Window.app:QApplication` and `Window.view:QWebEngineView` can be configured.\n
+        Then use `Window.exec()` to begin execution manually.
+        """
         title = self.title
         size = self.size
 
@@ -279,16 +309,35 @@ class Window:
 
         layout.addWidget(view)
 
+        self.app = app
         self.view = view
         self.qt_window = window;
 
-        self.running = True
         self.qt_window.show()
-        sys.exit(app.exec())
 
+        if exec:
+            self.exec()
+
+    def exec(self):
+        self.running = True
+        sys.exit(self.app.exec())
 
     def close(self):
         self.qt_window.close()
+
+    def addEventListener(self, eventHandler:str, NeutronEvent:str):
+        """
+        `eventHandler` should be a [Document Event](https://developer.mozilla.org/docs/Web/API/Document#events).\n
+        `NeutronEvent` can be created with `Neutron.event(function)`.
+        """
+        if self.running:
+            self.run_javascript(f""" '' + document.addEventListener("{eventHandler}", {NeutronEvent});""")
+        elif self.displayed:
+            raise RuntimeError(""""Window.addEventListener()" can only be called before Window.display()!""")
+        else:
+            # Package the event listener for Window.display to merge into the final HTML as a <script>
+            # since you can't add it as an attribute on the document like you can with an element
+            document_scripts.append(f"""document.addEventListener("{eventHandler}", {NeutronEvent});""")
 
     def appendChild(self, html_element):
         if self.running:
@@ -304,6 +353,17 @@ class Window:
         else:
             raise RuntimeError(""""Window.append()" can only be called while the window is running!""")
 
+    def getElementsByClassName(self, name):
+        if self.running:
+            ElementsNeutronID = self.run_javascript("var elementsNeutronID = []; Array.from(document.getElementsByClassName('" + name + "')).forEach(function(item) { elementsNeutronID.push(item.className) }); '' + elementsNeutronID;")
+            if ElementsNeutronID:
+                return [elements.HTMLelement(self, NeutronID.split(' ')[0], None, True) for NeutronID in ElementsNeutronID.split(",")]
+            else:
+                return []
+        else:
+            soup = BeautifulSoup(self.html, "html.parser")
+            return [elements.HTMLelement(self, elem['class'][0], elem, False) for elem in soup.find_all(class_=name)]
+
     def getElementById(self, id):
         if self.running:
             elementNeutronID = str(self.run_javascript(f""" '' + document.getElementById("{id}").className;"""))
@@ -318,17 +378,15 @@ class Window:
             if NeutronID:
                 return elements.HTMLelement(self, NeutronID, None, True)
             else:
-                logging.warning(f'HTMLelement with id "{id}" was not found!')
                 return None
         else:
             soup = BeautifulSoup(self.html, "html.parser")
             # check if element exists
-            element = soup.select(f'#{id}')
-            if element != []:
-                NeutronID = element[0].get('class')[0]
-                return elements.HTMLelement(self, NeutronID, element, True)
+            elems = soup.select(f'#{id}')
+            if elems != []:
+                NeutronID = elems[0]['class'][0]
+                return elements.HTMLelement(self, NeutronID, elems[0], False)
             else:
-                logging.warning(f'HTMLelement with id "{id}" was not found!')
                 return None
 
     def getElementsByTagName(self, name):
@@ -337,7 +395,7 @@ class Window:
             return [elements.HTMLelement(self, NeutronID.split(' ')[0], None, True) for NeutronID in ElementsNeutronID.split(",")]
         else:
             soup = BeautifulSoup(self.html, "html.parser")
-            return [elements.HTMLelement(self, element.get('class')[0], element, True) for element in soup.find_all(name)]
+            return [elements.HTMLelement(self, element['class'][0], element, False) for element in soup.find_all(name)]
 
     def createElement(self, tag):
         soup = BeautifulSoup(self.html, features="html.parser")
