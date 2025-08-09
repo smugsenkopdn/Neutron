@@ -51,13 +51,6 @@ HTMLelementAttributes = ['accept', 'action', 'align', 'allow', 'alt', 'autocapit
                          'onwaiting', 'ontoggle']
 
 class ClassList():
-    """
-    list with JavaScript methods:
-    - add()
-    - remove()
-    - replace()
-    - toggle()
-    """
     def __init__(self, elem, list:list):
         self.elem = elem
         self.list = list
@@ -66,28 +59,30 @@ class ClassList():
     def add(self, value):
         if not (value in self.list):
             self.list.append(value)
-            self.elem.classList = self.list
+            self.save_list()
     def remove(self, value):
         if value in self.list:
             self.list.remove(value)
-            self.elem.classList = self.list
+            self.save_list()
     def replace(self, old, new):
         if old in self.list:
             self.list.remove(old)
             self.list.append(new)
-            self.elem.classList = self.list
+            self.save_list()
             return True
         else: return False
     def toggle(self, value, force:bool=False):
         if value in self.list:
             self.list.remove(value)
-            self.elem.classList = self.list
+            self.save_list()
             return False
         elif force: return False
         else:
             self.list.append(value)
-            self.elem.classList = self.list
+            self.save_list()
             return True
+    def save_list(self):
+        self.elem.classList = self.list
 
 class HTMLelement:
     def __init__(self, window, NeutronID, element_soup, domAttatched):
@@ -185,6 +180,11 @@ class HTMLelement:
 
     @property
     def classList(self):
+        """
+        Returns a `list` but with JavaScript methods `add`, `remove`, `replace`, and `toggle`.\n
+        If you want to modify the `classList` in a different way, modify the internal `classList.list`,\n
+        but then you must call `classList.save_list()` to finalize your mutation.
+        """
         if self.window.running and self.domAttatched:
             classList = str(self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].classList;""")).split(' ')
             classList.remove(self.NeutronID) # hide the NeutronID
