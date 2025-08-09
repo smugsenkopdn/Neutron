@@ -50,6 +50,39 @@ HTMLelementAttributes = ['value', 'accept', 'action', 'align', 'allow', 'alt', '
                          'onratechange', 'onseeked', 'onseeking', 'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange',
                          'onwaiting', 'ontoggle',]
 
+class ClassList():
+    def __init__(self, elem, list:list):
+        self.elem = elem
+        self.list = list
+    def __str__(self):
+        return str(self.list)
+    def add(self, value):
+        if not (value in self.list):
+            self.list.append(value)
+            self.save_list()
+    def remove(self, value):
+        if value in self.list:
+            self.list.remove(value)
+            self.save_list()
+    def replace(self, old, new):
+        if old in self.list:
+            self.list.remove(old)
+            self.list.append(new)
+            self.save_list()
+            return True
+        else: return False
+    def toggle(self, value, force:bool=False):
+        if value in self.list:
+            self.list.remove(value)
+            self.save_list()
+            return False
+        elif force: return False
+        else:
+            self.list.append(value)
+            self.save_list()
+            return True
+    def save_list(self):
+        self.elem.classList = self.list
 
 class HTMLelement:
     def __init__(self, window, NeutronID, element_soup, domAttatched):
@@ -136,6 +169,32 @@ class HTMLelement:
         else:
             del self.element_soup[attribute]
 
+    @property
+    def classList(self):
+        """
+        Returns a `list` but with JavaScript methods `add`, `remove`, `replace`, and `toggle`.\n
+        If you want to modify the `classList` in a different way, modify the internal `classList.list`,\n
+        but then you must call `classList.save_list()` to finalize your mutation.
+        """
+        if self.window.running and self.domAttatched:
+            classList = str(self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].classList;""")).split(' ')
+            classList.remove(self.NeutronID) # hide the NeutronID
+            return ClassList(self, classList)
+        else:
+            classList = self.element_soup['class']
+            classList.remove(self.NeutronID) # hide the NeutronID
+            return ClassList(self, classList)
+    @classList.setter
+    def classList(self, value:list|ClassList):
+        if self.window.running and self.domAttatched:
+            classList = str(self.NeutronID) # sneak in the NeutronID
+            for c in value:
+                classList = f"{classList} {str(c)}"
+            self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].setAttribute("class", "{classList}");""")
+        else:
+            classList = [str(self.NeutronID)] # sneak in the NeutronID
+            classList.extend(value)
+            self.element_soup['class'] = classList
 
     def innerHTML_get(self):
         if self.window.running and self.domAttatched:
