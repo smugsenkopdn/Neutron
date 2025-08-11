@@ -136,6 +136,7 @@ class HTMLelement:
             self.element_soup.append(BeautifulSoup(str(html_element), 'html.parser'))
 
     def append(self, html):
+        """Appends HTML after the last child of the element."""
         if self.window.running and self.domAttatched:
             soup = BeautifulSoup(html, features="html.parser")
             bodyContent = soup.find_all()
@@ -143,7 +144,10 @@ class HTMLelement:
             for element in bodyContent:
                 createNeutronId(element)
 
-            self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].innerHTML += '{str(soup)}';""")
+            # Replace the `outerHTML` of a sacrificial child to avoid `innerHTML += html`
+            self.window.run_javascript(f"""const temp = document.createElement('template');
+                                           document.getElementsByClassName("{self.NeutronID}")[0].appendChild(temp);
+                                           temp.outerHTML = '{str(soup)}';""")
         else:
             self.element_soup.append(BeautifulSoup(html, 'html.parser'))
 
