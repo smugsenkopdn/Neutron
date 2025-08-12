@@ -147,7 +147,7 @@ class HTMLelement:
             # Replace the `outerHTML` of a sacrificial child to avoid `innerHTML += html`
             self.window.run_javascript(f"""const temp = document.createElement('template');
                                            document.getElementsByClassName("{self.NeutronID}")[0].appendChild(temp);
-                                           temp.outerHTML = '{str(soup)}';""")
+                                           temp.outerHTML = '{str(soup).replace("\n","")}';""")
         else:
             self.element_soup.append(BeautifulSoup(html, 'html.parser'))
 
@@ -212,7 +212,7 @@ class HTMLelement:
     @property
     def innerHTML(self):
         """
-        Do not use `HTMLelement.innerHTML()` to create elements!\n
+        Do not use `HTMLelement.innerHTML` to create elements!\n
         Use `HTMLelement.append()` or `HTMLelement.appendChild()` instead.
         """
         if self.window.running and self.domAttatched:
@@ -222,7 +222,7 @@ class HTMLelement:
     @innerHTML.setter
     def innerHTML(self, value):
         if self.window.running and self.domAttatched:
-            self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].innerHTML = "{value}";""")
+            self.window.run_javascript(f"""document.getElementsByClassName("{self.NeutronID}")[0].innerHTML = "{value.replace('\n','').replace('"',"'")}";""")
         else:
             self.element_soup.clear()
             self.element_soup.append(BeautifulSoup(value, 'html.parser'))
